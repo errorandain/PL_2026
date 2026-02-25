@@ -213,8 +213,27 @@ def draw_cat(surface, shift_x, shift_y, scale, mirrored=False):
         ellipse(surface, ORANGE, (shift_x + (400-150-180-(250/1.7))*scale, shift_y + 180*scale, (250/1.7)*scale, (120/3.3)*scale))
         ellipse(surface, black, (shift_x + (400-150-180-(250/1.7))*scale, shift_y + 180*scale, (250/1.7)*scale, (120/3.3)*scale), 2)
 
+
+# ===== функция для рисования серых шариков =====
+def draw_grey_balls(surface, num_balls=4):
+    for _ in range(num_balls):
+        # Случайное положение в пределах коричневого фона
+        x = randint(50, 550)
+        y = randint(220, 480)
+        
+        # Случайный размер
+        radius = randint(5, 15)
+        
+        # Рисуем шарик с черной обводкой как у клубка
+        circle(surface, black, (x, y), radius + 2)
+        circle(surface, grey, (x, y), radius)
+
+
+# ===== рисуем серые шарики =====
+draw_grey_balls(screen, 5)
+
 # ===== рисуем орду котов =====
-num_cats = 5  # количество котов в орде
+num_cats = 4  # количество котов в орде
 for _ in range(num_cats):
     scale = uniform(0.3, 0.7)                # случайный размер
     mirrored = choice([True, False])         # случайное направление

@@ -24,7 +24,7 @@ while running:
 
     # Красные глаза с черными зрачками
     # Левый
-    circle(screen, RED, (160, 180), 18)
+    circle(screen, RED, (160, 180), 22)
     circle(screen, BLACK, (160, 180), 6)
     # Правый
     circle(screen, RED, (240, 180), 18)

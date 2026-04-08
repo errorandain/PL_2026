@@ -1,312 +1,313 @@
 import pygame
-import random  # Модуль для случайной генерации чисел
 from pygame.draw import *
+from random import randint, uniform
+import math
 
+# Инициализация Pygame
 pygame.init()
 
+# Константы экрана
+SCREEN_WIDTH = 1200
+SCREEN_HEIGHT = 900
+FPS = 60
 
-DEFAULT_EYE_COLOR = (0, 0, 0)          # чёрные глаза (RGB: красный, зелёный, синий)
-DEFAULT_NOSE_COLOR = (255, 192, 203)   # розовый нос
+# Цвета
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+YELLOW = (255, 255, 0)
+GREEN = (0, 255, 0)
+MAGENTA = (255, 0, 255)
+CYAN = (0, 255, 255)
+BLACK = (0, 0, 0)
+COLORS = [RED, BLUE, YELLOW, GREEN, MAGENTA, CYAN]
 
-# Параметры окна
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-BACKGROUND_COLOR = (255, 255, 255)  # белый фон
+# Параметры уровней (0-4, всего 5 уровней)
+LEVEL_BALL_COUNTS = [2, 4, 6, 8, 10]          # начальное количество шаров на уровне
+LEVEL_SCORE_THRESHOLDS = [0, 100, 300, 600, 1000]  # очки для перехода на следующий уровень
+LEVEL_SPEED_MULTIPLIER = [1.0, 1.2, 1.5, 2.0, 2.5] # множитель скорости
+LEVEL_TIMEOUT = [10, 8, 6, 5, 4]             # время (сек) без попадания до взрыва всех шаров
 
-# Список цветов для зайцев - каждый цвет это кортеж из 3 чисел (R, G, B)
-HARE_COLORS = [
-    (210, 180, 140),  # коричневый
-    (169, 169, 169),  # серый
-    (255, 255, 255),  # белый
-    (255, 140, 0),    # рыжий
-    (50, 50, 50),     # чёрный
-    (255, 255, 0),    # жёлтый
-    (255, 192, 203),  # розовый
-    (150, 75, 0),     # тёмно-коричневый
-    (200, 200, 200),  # светло-серый
-    (255, 200, 150),  # бежевый
-]
+# Параметры комбо
+COMBO_THRESHOLDS = [5, 10, 20, 50]           # количество попаданий подряд
+COMBO_MULTIPLIERS = [2, 3, 5, 10]            # соответствующие множители очков
 
-# Названия цветов (для вывода в консоль)
-COLOR_NAMES = [
-    "коричневый", "серый", "белый", "рыжий", "чёрный", 
-    "жёлтый", "розовый", "тёмно-коричневый", "светло-серый", "бежевый"
-]
+# Базовое количество очков за попадание
+BASE_SCORE = 10
 
+# Диапазон случайных скоростей (пикселей в секунду)
+MIN_SPEED = 100
+MAX_SPEED = 300
 
-# ============================== ФУНКЦИЯ ГЕНЕРАЦИИ ==============================
-def generate_random_hares():
-    '''
-    Генерирует случайных зайцев.
-    Возвращает список зайцев с их параметрами.
-    
-    Функция не принимает параметры, но использует глобальные константы
-    '''
-    # random.randint(1, 8) генерирует случайное число от 1 до 8
-    count = random.randint(1, 8)
-    
-    print(f"=== ГЕНЕРАЦИЯ {count} СЛУЧАЙНЫХ ЗАЙЦЕВ ===\n")
-    
-    hares = []  # пустой список для хранения зайцев
-    
-    # Цикл для создания каждого зайца
-    for i in range(count):
-        # Случайные координаты (с отступом от краёв)
-        x = random.randint(150, SCREEN_WIDTH - 150)
-        y = random.randint(150, SCREEN_HEIGHT - 150)
-        
-        # Случайные размеры
-        width = random.randint(80, 250)
-        height = random.randint(150, 400)
-        
-        # Случайный цвет из списка HARE_COLORS
-        color_index = random.randint(0, len(HARE_COLORS) - 1)
-        hare_color = HARE_COLORS[color_index]
-        
-        # Случайный цвет глаз (полностью случайный RGB)
-        eye_color = (
-            random.randint(0, 255),  # красный
-            random.randint(0, 255),  # зелёный
-            random.randint(0, 255)   # синий
-        )
-        
-        # Добавляем зайца в список как кортеж из 6 элементов
-        hares.append((x, y, width, height, hare_color, eye_color))
-        
-        # Выводим информацию в консоль
-        print(f"Заяц {i+1}: {COLOR_NAMES[color_index]}, "
-              f"позиция ({x}, {y}), размер {width}x{height}, "
-              f"глаза RGB{eye_color}")
-    
-    return hares  # возвращаем список зайцев
+class Ball:
+    """Класс шарика."""
+    def __init__(self, x, y, r, color, vx, vy):
+        self.x = x
+        self.y = y
+        self.r = r
+        self.color = color
+        self.vx = vx
+        self.vy = vy
 
+    def move(self, dt):
+        """Переместить шарик с учётом времени кадра dt (сек)."""
+        self.x += self.vx * dt
+        self.y += self.vy * dt
+        # Отражение от стенок
+        if self.x - self.r < 0:
+            self.x = self.r
+            self.vx = -self.vx
+        if self.x + self.r > SCREEN_WIDTH:
+            self.x = SCREEN_WIDTH - self.r
+            self.vx = -self.vx
+        if self.y - self.r < 0:
+            self.y = self.r
+            self.vy = -self.vy
+        if self.y + self.r > SCREEN_HEIGHT:
+            self.y = SCREEN_HEIGHT - self.r
+            self.vy = -self.vy
 
-# ============================ ФУНКЦИИ РИСОВАНИЯ ============================
-# Все функции рисования принимают surface (поверхность для рисования)
-# и координаты/размеры/цвета
+    def draw(self, screen):
+        """Нарисовать шарик на экране."""
+        circle(screen, self.color, (int(self.x), int(self.y)), self.r)
 
-def draw_hare(surface, x, y, width, height, main_color, eye_color, nose_color):
-    '''
-    ГЛАВНАЯ ФУНКЦИЯ: рисует целого зайца, вызывая другие функции
-    
-    Параметры:
-    surface - где рисовать (экран или другая поверхность)
-    x, y - координаты ЦЕНТРА зайца
-    width, height - ширина и высота всего зайца
-    main_color - цвет шерсти
-    eye_color - цвет глаз
-    nose_color - цвет носа
-    
-    ВАЖНО: все размеры частей рассчитываются относительно width и height
-    Поэтому заяц автоматически масштабируется при изменении размеров
-    '''
-    # ---- Расчёт размеров головы ----
-    # Голова занимает 1/4 от высоты всего зайца
-    head_size = height // 4  # // это целочисленное деление
-    head_y = y - head_size // 2  # голова выше центра
-    
-    # ---- Тело ----
-    body_width = width // 2
-    body_height = height // 2
-    # Тело ниже центра (body_y)
-    body_y = y + body_height // 2
-    draw_body(surface, x, body_y, body_width, body_height, main_color)
+    def contains_point(self, pos):
+        """Проверить, находится ли точка pos внутри шарика."""
+        dx = pos[0] - self.x
+        dy = pos[1] - self.y
+        return dx*dx + dy*dy <= self.r*self.r
 
-    # ---- Голова ----
-    draw_head(surface, x, head_y, head_size, main_color)
+    def reflect_with(self, other):
+        """Упругое столкновение двух шаров."""
+        # Вектор между центрами
+        dx = other.x - self.x
+        dy = other.y - self.y
+        dist = math.hypot(dx, dy)
+        if dist == 0:
+            return
+        # Нормаль
+        nx = dx / dist
+        ny = dy / dist
+        # Относительная скорость
+        dvx = other.vx - self.vx
+        dvy = other.vy - self.vy
+        # Проекция относительной скорости на нормаль
+        vrel = dvx * nx + dvy * ny
+        if vrel > 0:
+            return
+        # Коэффициент упругости (1 - абсолютно упругое)
+        e = 1.0
+        # Импульс
+        m1 = self.r ** 2   # масса пропорциональна площади (или квадрату радиуса)
+        m2 = other.r ** 2
+        imp = (1 + e) * vrel / (1/m1 + 1/m2)
+        # Изменение скоростей
+        self.vx += imp / m1 * nx
+        self.vy += imp / m1 * ny
+        other.vx -= imp / m2 * nx
+        other.vy -= imp / m2 * ny
 
-    # ---- Уши (2 штуки) ----
-    ear_height = height // 3
-    ear_width = width // 8
-    ear_y = y - height // 2 + ear_height // 2  # уши вверху
-    # Координаты X для левого и правого уха
-    ear_positions = (x - head_size // 4, x + head_size // 4)
-    # Цикл для рисования двух ушей
-    for ear_x in ear_positions:
-        draw_ear(surface, ear_x, ear_y, ear_width, ear_height, main_color)
-    
-    # ---- Ноги (2 штуки) ----
-    leg_height = height // 16
-    leg_width = width // 4
-    leg_y = y + height // 2 - leg_height // 2  # ноги внизу
-    leg_positions = (x - width // 4, x + width // 4)
-    for leg_x in leg_positions:
-        draw_leg(surface, leg_x, leg_y, leg_width, leg_height, main_color)
-    
-    # ---- Глаза (2 штуки) ----
-    eye_size = head_size // 6
-    eye_y = head_y - head_size // 8  # глаза в верхней части головы
-    eye_positions = (x - head_size // 4, x + head_size // 4)
-    for eye_x in eye_positions:
-        draw_eye(surface, eye_x, eye_y, eye_size, eye_color)
-    
-    # ---- Нос (1 штука) ----
-    nose_size = head_size // 8
-    nose_y = head_y + head_size // 8  # нос ниже центра головы
-    draw_nose(surface, x, nose_y, nose_size, nose_color)
-    
-    # ---- Усы (слева и справа) ----
-    whisker_length = head_size // 3
-    whisker_y = nose_y
-    # side = -1 для левой стороны, side = 1 для правой
-    for side in (-1, 1):
-        draw_whiskers(surface, x, whisker_y, whisker_length, side)
+class Game:
+    """Основной класс игры."""
+    def __init__(self, screen):
+        self.screen = screen
+        self.clock = pygame.time.Clock()
+        self.balls = []
+        self.score = 0
+        self.level = 0                # 0..4
+        self.combo_counter = 0
+        self.combo_multiplier = 1
+        self.last_hit_time = pygame.time.get_ticks() / 1000.0   # секунды
+        self.running = True
 
+        # Создаём шарики для начального уровня
+        self._spawn_initial_balls()
 
-def draw_body(surface, x, y, width, height, color):
-    '''Рисует тело зайца (овал).'''
-    # x - width//2, y - height//2 - это левый верхний угол овала
-    # width, height - размеры овала
-    ellipse(surface, color, (x - width // 2, y - height // 2, width, height))
+    def _spawn_initial_balls(self):
+        """Создать начальное количество шаров для текущего уровня."""
+        self.balls.clear()
+        count = LEVEL_BALL_COUNTS[self.level]
+        speed_mult = LEVEL_SPEED_MULTIPLIER[self.level]
+        for _ in range(count):
+            ball = self._create_random_ball(speed_mult)
+            self.balls.append(ball)
 
+    def _create_random_ball(self, speed_mult=1.0):
+        """Создать один случайный шарик с множителем скорости."""
+        r = randint(20, 50)
+        x = randint(r, SCREEN_WIDTH - r)
+        y = randint(r, SCREEN_HEIGHT - r)
+        color = COLORS[randint(0, len(COLORS)-1)]
+        # Случайная скорость в диапазоне, затем умножаем на множитель уровня
+        base_vx = uniform(-MAX_SPEED, MAX_SPEED)
+        base_vy = uniform(-MAX_SPEED, MAX_SPEED)
+        # Чтобы шарик не был слишком медленным
+        while abs(base_vx) < MIN_SPEED and abs(base_vy) < MIN_SPEED:
+            base_vx = uniform(-MAX_SPEED, MAX_SPEED)
+            base_vy = uniform(-MAX_SPEED, MAX_SPEED)
+        vx = base_vx * speed_mult
+        vy = base_vy * speed_mult
+        return Ball(x, y, r, color, vx, vy)
 
-def draw_head(surface, x, y, size, color):
-    '''Рисует голову зайца (круг).'''
-    # size - диаметр, size//2 - радиус
-    circle(surface, color, (x, y), size // 2)
+    def _max_balls_allowed(self):
+        """Максимальное количество шаров на текущем уровне по формуле n+2*(n+n) = 5*n."""
+        n = LEVEL_BALL_COUNTS[self.level]
+        return 5 * n
 
+    def _update_combo(self, hit):
+        """Обновить комбо: hit = True при попадании, False при промахе."""
+        if hit:
+            self.combo_counter += 1
+            # Определяем множитель
+            mult = 1
+            for i, thresh in enumerate(COMBO_THRESHOLDS):
+                if self.combo_counter >= thresh:
+                    mult = COMBO_MULTIPLIERS[i]
+                else:
+                    break
+            self.combo_multiplier = mult
+        else:
+            self.combo_counter = 0
+            self.combo_multiplier = 1
 
-def draw_ear(surface, x, y, width, height, color):
-    '''Рисует ухо зайца (овал).'''
-    ellipse(surface, color, (x - width // 2, y - height // 2, width, height))
+    def _add_score(self, base):
+        """Добавить очки с учётом множителя комбо."""
+        gained = base * self.combo_multiplier
+        self.score += gained
+        # После добавления очков проверим переход уровня
+        self._check_level_up()
 
+    def _check_level_up(self):
+        """Проверить, не пора ли перейти на следующий уровень."""
+        if self.level + 1 < len(LEVEL_SCORE_THRESHOLDS) and self.score >= LEVEL_SCORE_THRESHOLDS[self.level + 1]:
+            self.level += 1
+            # Сброс комбо при переходе
+            self.combo_counter = 0
+            self.combo_multiplier = 1
+            # Удаляем все шары и создаём новые для нового уровня
+            self._spawn_initial_balls()
+            # Сбрасываем таймер последнего попадания
+            self.last_hit_time = pygame.time.get_ticks() / 1000.0
 
-def draw_leg(surface, x, y, width, height, color):
-    '''Рисует ногу зайца (овал).'''
-    ellipse(surface, color, (x - width // 2, y - height // 2, width, height))
+    def _handle_timeout(self, current_time):
+        """Проверить таймер бездействия и взорвать все шары при превышении."""
+        time_since_last_hit = current_time - self.last_hit_time
+        timeout_limit = LEVEL_TIMEOUT[self.level]
+        if time_since_last_hit > timeout_limit:
+            # Взрыв всех шаров: очищаем и создаём новые
+            self.balls.clear()
+            self._spawn_initial_balls()
+            # Сбрасываем комбо
+            self.combo_counter = 0
+            self.combo_multiplier = 1
+            # Обновляем время последнего попадания, чтобы таймер начал отсчёт заново
+            self.last_hit_time = current_time
 
+    def _handle_collisions(self):
+        """Обработать столкновения шаров между собой (если уровень >= 3)."""
+        if self.level >= 3:
+            n = len(self.balls)
+            for i in range(n):
+                for j in range(i+1, n):
+                    b1 = self.balls[i]
+                    b2 = self.balls[j]
+                    dx = b1.x - b2.x
+                    dy = b1.y - b2.y
+                    dist = math.hypot(dx, dy)
+                    if dist < b1.r + b2.r:
+                        # Шары пересеклись – отражаем
+                        b1.reflect_with(b2)
+                        # Раздвигаем, чтобы не залипали
+                        overlap = b1.r + b2.r - dist
+                        if dist == 0:
+                            angle = uniform(0, 2*math.pi)
+                        else:
+                            angle = math.atan2(dy, dx)
+                        shift_x = math.cos(angle) * overlap / 2
+                        shift_y = math.sin(angle) * overlap / 2
+                        b1.x += shift_x
+                        b1.y += shift_y
+                        b2.x -= shift_x
+                        b2.y -= shift_y
 
-def draw_eye(surface, x, y, size, eye_color):
-    '''
-    Рисует глаз с белком, радужкой и зрачком.
-    '''
-    # Белок (внешний круг)
-    circle(surface, (255, 255, 255), (x, y), size)
-    
-    # Радужка (цветная часть, размером в половину белка)
-    iris_size = size // 2
-    circle(surface, eye_color, (x, y), iris_size)
-    
-    # Зрачок (чёрный, размером в половину радужки)
-    pupil_size = iris_size // 2
-    circle(surface, (0, 0, 0), (x, y), pupil_size)
-    
-    # Блик (белая точка для объёма) - только у 70% зайцев
-    if random.random() > 0.3:  # random() даёт число от 0 до 1
-        highlight_size = pupil_size // 3
-        highlight_x = x - pupil_size // 3
-        highlight_y = y - pupil_size // 3
-        circle(surface, (255, 255, 255), (highlight_x, highlight_y), highlight_size)
+    def handle_click(self, pos):
+        """Обработать клик мыши. Возвращает True, если попали в шарик."""
+        # Ищем первый шарик, в который попали
+        hit_ball = None
+        for ball in self.balls:
+            if ball.contains_point(pos):
+                hit_ball = ball
+                break
 
+        if hit_ball:
+            # Попадание
+            self._update_combo(True)
+            self._add_score(BASE_SCORE)
+            # Удаляем шарик
+            self.balls.remove(hit_ball)
+            # Обновляем время последнего попадания
+            self.last_hit_time = pygame.time.get_ticks() / 1000.0
 
-def draw_nose(surface, x, y, size, nose_color):
-    '''Рисует нос (треугольник).'''
-    # Три точки треугольника
-    points = [
-        (x, y - size),           # верхняя точка
-        (x - size, y + size),    # левая нижняя
-        (x + size, y + size)     # правая нижняя
-    ]
-    polygon(surface, nose_color, points)
+            # Создаём два новых шарика, но не превышая лимит уровня
+            max_allowed = self._max_balls_allowed()
+            speed_mult = LEVEL_SPEED_MULTIPLIER[self.level]
+            for _ in range(2):
+                if len(self.balls) < max_allowed:
+                    self.balls.append(self._create_random_ball(speed_mult))
+            return True
+        else:
+            # Промах
+            self._update_combo(False)
+            return False
 
+    def update(self, dt):
+        """Обновить состояние игры за время dt (сек)."""
+        # Движение шаров
+        for ball in self.balls:
+            ball.move(dt)
+        # Столкновения между шарами (если разрешено)
+        self._handle_collisions()
+        # Проверка таймера бездействия
+        current_time = pygame.time.get_ticks() / 1000.0
+        self._handle_timeout(current_time)
 
-def draw_whiskers(surface, x, y, length, side):
-    '''
-    Рисует усы с одной стороны.
-    side: -1 для левой стороны, 1 для правой
-    '''
-    # Рисуем 3 уса: верхний, средний, нижний
-    for i in range(-1, 2):  # i будет -1, 0, 1
-        start_x = x + side * length // 4
-        start_y = y + i * length // 4
-        end_x = x + side * length
-        end_y = y + i * length // 2
-        # Толщина линии = 1 пиксель
-        line(surface, (0, 0, 0), (start_x, start_y), (end_x, end_y), 1)
+    def draw(self):
+        """Отрисовать всё на экране."""
+        self.screen.fill(BLACK)
+        for ball in self.balls:
+            ball.draw(self.screen)
 
+        # Отображение счёта, уровня и комбо
+        font = pygame.font.Font(None, 36)
+        score_text = font.render(f"Score: {self.score}", True, (255, 255, 255))
+        level_text = font.render(f"Level: {self.level+1}", True, (255, 255, 255))
+        combo_text = font.render(f"Combo: x{self.combo_multiplier} ({self.combo_counter})", True, (255, 255, 255))
+        self.screen.blit(score_text, (10, 10))
+        self.screen.blit(level_text, (10, 50))
+        self.screen.blit(combo_text, (10, 90))
 
-# =============================== ГЛАВНАЯ ФУНКЦИЯ ===============================
+        pygame.display.update()
+
+    def run(self):
+        """Главный игровой цикл."""
+        while self.running:
+            dt = self.clock.tick(FPS) / 1000.0   # время в секундах между кадрами
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    self.handle_click(event.pos)
+
+            self.update(dt)
+            self.draw()
+
+        pygame.quit()
+
 def main():
-    '''
-    Основная функция программы.
-    Здесь происходит:
-    1. Получение параметров
-    2. Создание окна
-    3. Рисование зайцев
-    4. Главный цикл обработки событий
-    '''
-    
-    print("=== ГЕНЕРАТОР СЛУЧАЙНЫХ ЗАЙЦЕВ ===\n")
-    print("Нажми ПРОБЕЛ чтобы сгенерировать новых зайцев")
-    print("Закрой окно для выхода\n")
-    
-    # Генерируем случайных зайцев
-    hares = generate_random_hares()
-    
-    # Создаём окно
     screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption(f"{len(hares)} случайных зайцев")
-    screen.fill(BACKGROUND_COLOR)
-    
-    # Рисуем всех зайцев
-    for hare in hares:
-        # Распаковываем кортеж с параметрами зайца
-        x, y, width, height, hare_color, eye_color = hare
-        draw_hare(screen, x, y, width, height, 
-                 hare_color, eye_color, DEFAULT_NOSE_COLOR)
-    
-    # Добавляем номера зайцев (для красоты)
-    font = pygame.font.Font(None, 20)  # шрифт размера 20
-    for i, hare in enumerate(hares):
-        x, y, width, height, _, _ = hare
-        text = font.render(f"#{i+1}", True, (100, 100, 100))
-        screen.blit(text, (x - 15, y - height//2 - 20))
-    
-    pygame.display.update()  # обновляем экран
-    
-    # ============================ ГЛАВНЫЙ ЦИКЛ ============================
-    # Здесь программа работает, пока пользователь не закроет окно
-    
-    clock = pygame.time.Clock()
-    FPS = 30  # кадров в секунду
-    running = True
-    
-    while running:
-        clock.tick(FPS)  # ограничиваем скорость цикла
-        
-        # Обрабатываем все события (нажатия клавиш, движения мыши и т.д.)
-        for event in pygame.event.get():
-            # Если нажали крестик закрытия окна
-            if event.type == pygame.QUIT:
-                running = False
-            
-            # Если нажали клавишу
-            elif event.type == pygame.KEYDOWN:
-                # Если нажали ПРОБЕЛ
-                if event.key == pygame.K_SPACE:
-                    # Очищаем экран
-                    screen.fill(BACKGROUND_COLOR)
-                    
-                    # Генерируем новых зайцев
-                    hares = generate_random_hares()
-                    
-                    # Рисуем их
-                    for hare in hares:
-                        x, y, width, height, hare_color, eye_color = hare
-                        draw_hare(screen, x, y, width, height, 
-                                 hare_color, eye_color, DEFAULT_NOSE_COLOR)
-                    
-                    # Обновляем номера
-                    for i, hare in enumerate(hares):
-                        x, y, width, height, _, _ = hare
-                        text = font.render(f"#{i+1}", True, (100, 100, 100))
-                        screen.blit(text, (x - 15, y - height//2 - 20))
-                    
-                    # Показываем обновлённый экран
-                    pygame.display.update()
-                    print(f"\n Сгенерировано {len(hares)} новых зайцев!")
-    
-    # Выходим из pygame
-    pygame.quit()
+    pygame.display.set_caption("Поймай шарик")
+    game = Game(screen)
+    game.run()
 
-main()
+if __name__ == "__main__":
+    main()

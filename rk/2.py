@@ -1,4 +1,5 @@
 import random
+import copy
 from collections import deque
 
 def min_minutes_to_rot(matrix):
@@ -59,7 +60,6 @@ def random_apple_matrix(rows, cols):
     """Создаёт матрицу rows x cols со случайными значениями 0, 1, 2"""
     return [[random.randint(0, 2) for _ in range(cols)] for _ in range(rows)]
 
-print("Вариант 1, Задание 2 — заражение яблок")
 print("Программа будет генерировать случайные матрицы до тех пор, пока не найдёт успешный случай.")
 print("(Все яблоки смогут стать плохими)\n")
 
@@ -80,7 +80,7 @@ while not success:
     #     print(row)
     
     # Копируем, чтобы не портить оригинал при повторных попытках (хотя мы каждый раз создаём новую)
-    import copy
+
     garden_copy = copy.deepcopy(garden)
     
     minutes, iters = min_minutes_to_rot(garden_copy)

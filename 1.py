@@ -18,7 +18,6 @@ GREY = 0x7D7D7D
 ORANGE = 0xFFA500
 DARK_RED = 0x8B0000
 DARK_GREEN = 0x006400
-PURPLE = 0x800080
 GAME_COLORS = [RED, BLUE, YELLOW, GREEN, MAGENTA, CYAN]
 
 WIDTH = 800
@@ -42,7 +41,7 @@ class Bomb:
         self.y = y
         self.r = 8
         self.vx = randint(-2, 2)
-        self.vy = randint(1, 3)
+        self.vy = randint(1, 3)  # Падает вниз
         self.color = DARK_RED
         self.live = True
         self.damage = 1
@@ -52,18 +51,21 @@ class Bomb:
         self.x += self.vx
         self.y += self.vy
         
+        # Бомба исчезает, если выходит за границы экрана
         if (self.x > WIDTH + self.r or self.x < -self.r or 
             self.y > HEIGHT + self.r or self.y < -self.r):
             self.live = False
 
     def draw(self):
         """Рисование бомбы."""
+        # Основной круг бомбы
         pygame.draw.circle(
             self.screen,
             self.color,
             (self.x, self.y),
             self.r
         )
+        # Фитиль бомбы
         pygame.draw.line(
             self.screen,
             ORANGE,
@@ -71,6 +73,7 @@ class Bomb:
             (self.x + 3, self.y - self.r - 5),
             3
         )
+        # Искра на фитиле
         spark_color = choice([YELLOW, RED, ORANGE])
         pygame.draw.circle(
             self.screen,
@@ -84,12 +87,21 @@ class Bomb:
         dx = self.x - obj.x
         dy = self.y - obj.y
         dist = math.hypot(dx, dy)
+        # Используем фиксированный радиус попадания для пушки
         obj_radius = getattr(obj, 'r', 20)
         return dist <= self.r + obj_radius
 
 
 class Ball:
     def __init__(self, screen: pygame.Surface, x=40, y=450, ball_type="normal", owner=None):
+        """ Конструктор класса ball
+
+        Args:
+        x - начальное положение мяча по горизонтали
+        y - начальное положение мяча по вертикали
+        ball_type - тип снаряда (normal, heavy, bouncy)
+        owner - пушка, которая выпустила снаряд
+        """
         self.screen = screen
         self.x = x
         self.y = y
@@ -97,19 +109,7 @@ class Ball:
         self.vy = 0
         self.live = 30
         self.ball_type = ball_type
-        self.owner = owner
-        
-        # ВСЕ атрибуты должны быть установлены ДО их использования
-        # Установка значений по умолчанию
-        self.r = 10
-        self.color = GREY
-        self.gravity = 1
-        self.friction = 0.98
-        self.bounce_factor = 1.0
-        self.damage = 1
-        self.explosion_active = False
-        self.explosion_timer = 0
-        self.explosion_radius = 0
+        self.owner = owner  # Пушка-владелец, чтобы не попадать в себя
         
         # Настройки для разных типов снарядов
         if ball_type == "normal":
@@ -133,24 +133,9 @@ class Ball:
             self.friction = 0.995
             self.bounce_factor = 1.2
             self.damage = 1
-        elif ball_type == "explosive":
-            self.r = 18
-            self.color = PURPLE
-            self.gravity = 1.5
-            self.friction = 0.96
-            self.bounce_factor = 0.4
-            self.damage = 3
-            self.explosion_radius = 80
 
     def move(self):
         """Переместить мяч с учетом гравитации, трения и отскоков от стен."""
-        # Обработка взрыва
-        if self.explosion_active:
-            self.explosion_timer -= 1
-            if self.explosion_timer <= 0:
-                self.live = 0
-            return
-        
         # Гравитация
         self.vy -= self.gravity
         
@@ -166,25 +151,15 @@ class Ball:
         if self.x + self.r >= WIDTH:
             self.x = WIDTH - self.r
             self.vx = -self.vx * self.bounce_factor
-            # Взрывной снаряд активируется при ударе о стену
-            if self.ball_type == "explosive":
-                self.activate_explosion()
         if self.x - self.r <= 0:
             self.x = self.r
             self.vx = -self.vx * self.bounce_factor
-            if self.ball_type == "explosive":
-                self.activate_explosion()
         if self.y + self.r >= HEIGHT:
             self.y = HEIGHT - self.r
             self.vy = -self.vy * self.bounce_factor
-            # Активация взрыва при падении на землю
-            if self.ball_type == "explosive":
-                self.activate_explosion()
         if self.y - self.r <= 0:
             self.y = self.r
             self.vy = -self.vy * self.bounce_factor
-            if self.ball_type == "explosive":
-                self.activate_explosion()
         
         # Остановка при очень маленькой скорости
         if abs(self.vx) < 0.5:
@@ -192,114 +167,20 @@ class Ball:
         if abs(self.vy) < 0.5:
             self.vy = 0
 
-    def activate_explosion(self):
-        """Активация взрыва для explosive снаряда."""
-        if self.ball_type == "explosive" and not self.explosion_active:
-            self.explosion_active = True
-            self.explosion_timer = 20
-            self.vx = 0
-            self.vy = 0
-
-    def get_explosion_damage(self, obj_x, obj_y):
-        """Расчет урона от взрыва для объекта на позиции (obj_x, obj_y)."""
-        if self.explosion_active and self.explosion_timer > 0:
-            dx = self.x - obj_x
-            dy = self.y - obj_y
-            dist = math.hypot(dx, dy)
-            if dist <= self.explosion_radius:
-                # Урон зависит от расстояния
-                return max(1, self.damage - int(dist / 30))
-        return 0
-
     def draw(self):
-        # Отрисовка взрыва
-        if self.explosion_active:
-            # Внешний круг взрыва
-            alpha = self.explosion_timer / 20
-            explosion_r = int(self.explosion_radius * (1 - alpha * 0.3))
-            pygame.draw.circle(
-                self.screen,
-                ORANGE,
-                (int(self.x), int(self.y)),
-                explosion_r,
-                3
-            )
-            # Внутренний круг
-            pygame.draw.circle(
-                self.screen,
-                YELLOW,
-                (int(self.x), int(self.y)),
-                int(explosion_r * 0.6)
-            )
-            # Центр взрыва
-            pygame.draw.circle(
-                self.screen,
-                WHITE,
-                (int(self.x), int(self.y)),
-                5
-            )
-            return
-        
-        # Все снаряды - круглые, но с разными эффектами
-        if self.ball_type == "explosive":
-            # Пульсирующий эффект для взрывного снаряда
-            pulse = int(math.sin(pygame.time.get_ticks() * 0.01) * 3)
-            pygame.draw.circle(
-                self.screen,
-                self.color,
-                (int(self.x), int(self.y)),
-                self.r + pulse
-            )
-            # Внутренняя метка
-            pygame.draw.circle(
-                self.screen,
-                YELLOW,
-                (int(self.x), int(self.y)),
-                self.r // 2
-            )
-        elif self.ball_type == "heavy":
-            # Тяжёлый снаряд - большой круг с тёмной обводкой
-            pygame.draw.circle(
-                self.screen,
-                self.color,
-                (int(self.x), int(self.y)),
-                self.r
-            )
-            pygame.draw.circle(
-                self.screen,
-                DARK_RED,
-                (int(self.x), int(self.y)),
-                self.r,
-                2
-            )
-        elif self.ball_type == "bouncy":
-            # Прыгучий снаряд - круг со светлым бликом
-            pygame.draw.circle(
-                self.screen,
-                self.color,
-                (int(self.x), int(self.y)),
-                self.r
-            )
-            pygame.draw.circle(
-                self.screen,
-                WHITE,
-                (int(self.x) - 2, int(self.y) - 2),
-                self.r // 3
-            )
-        else:
-            # Обычный снаряд - простой круг
-            pygame.draw.circle(
-                self.screen,
-                self.color,
-                (int(self.x), int(self.y)),
-                self.r
-            )
+        pygame.draw.circle(
+            self.screen,
+            self.color,
+            (self.x, self.y),
+            self.r
+        )
 
     def hittest(self, obj):
         """Проверка столкновения с целью obj."""
         dx = self.x - obj.x
         dy = self.y - obj.y
         dist = math.hypot(dx, dy)
+        # Используем getattr для получения радиуса, с значением по умолчанию 20
         obj_radius = getattr(obj, 'r', 20)
         return dist <= self.r + obj_radius
 
@@ -316,37 +197,30 @@ class Gun:
         self.ammo_colors = {
             "normal": GREY,
             "heavy": BLACK,
-            "bouncy": ORANGE,
-            "explosive": PURPLE
+            "bouncy": ORANGE
         }
-        # Количество взрывных снарядов
-        self.explosive_ammo = 3
-        self.max_explosive_ammo = 5
-        
         # Позиция пушки
         self.x = x
         self.y = y
-        self.r = 15
-        
+        self.r = 15  # Радиус пушки для столкновений
         # Скорость движения пушки
         self.speed = 3
+        # Границы движения пушки по X
         self.min_x = 30
         self.max_x = WIDTH - 30
-        
         # Здоровье пушки
         self.health = 5
         self.max_health = 5
+        # Очки за уничтожение
         self.points_value = 10 if not is_player else 0
-        
         # Флаги
-        self.is_player = is_player
+        self.is_player = is_player  # Игрок или бот
         self.live = True
-        self.no_ammo_message = 0
         
         # AI параметры для ботов
         self.ai_timer = 0
         self.ai_target = None
-        self.ai_fire_delay = randint(60, 120)
+        self.ai_fire_delay = randint(60, 120)  # Задержка между выстрелами
 
     def move_left(self):
         """Движение пушки влево."""
@@ -375,29 +249,17 @@ class Gun:
     def fire(self, target_x, target_y):
         """Выстрел в указанную точку."""
         global balls, bullet
-        
-        # Проверка взрывных снарядов
-        if self.selected_ammo == "explosive":
-            if self.explosive_ammo <= 0:
-                self.no_ammo_message = 60
-                self.selected_ammo = "normal"
-                return
-            self.explosive_ammo -= 1
-        
         bullet += 1
         new_ball = Ball(self.screen, x=self.x, y=self.y, ball_type=self.selected_ammo, owner=self)
         new_ball.r += 5 if self.selected_ammo == "normal" else 0
         self.an = math.atan2((target_y - self.y), (target_x - self.x))
+        new_ball.vx = self.f2_power * math.cos(self.an)
+        new_ball.vy = - self.f2_power * math.sin(self.an)
         
-        # Скорость зависит от типа снаряда
-        speed_mult = 1.0
+        # Бонусная скорость для легких снарядов
         if self.selected_ammo == "bouncy":
-            speed_mult = 1.5
-        elif self.selected_ammo == "explosive":
-            speed_mult = 0.6
-        
-        new_ball.vx = self.f2_power * math.cos(self.an) * speed_mult
-        new_ball.vy = - self.f2_power * math.sin(self.an) * speed_mult
+            new_ball.vx *= 1.5
+            new_ball.vy *= 1.5
         
         balls.append(new_ball)
 
@@ -408,29 +270,17 @@ class Gun:
     def fire2_end(self, event):
         """Выстрел мячом (для игрока)."""
         global balls, bullet
-        
-        # Проверка взрывных снарядов
-        if self.selected_ammo == "explosive":
-            if self.explosive_ammo <= 0:
-                self.no_ammo_message = 60
-                self.selected_ammo = "normal"
-                return
-            self.explosive_ammo -= 1
-        
         bullet += 1
         new_ball = Ball(self.screen, x=self.x, y=self.y, ball_type=self.selected_ammo, owner=self)
         new_ball.r += 5 if self.selected_ammo == "normal" else 0
         self.an = math.atan2((event.pos[1]-self.y), (event.pos[0]-self.x))
+        new_ball.vx = self.f2_power * math.cos(self.an)
+        new_ball.vy = - self.f2_power * math.sin(self.an)
         
-        # Скорость зависит от типа снаряда
-        speed_mult = 1.0
+        # Бонусная скорость для легких снарядов
         if self.selected_ammo == "bouncy":
-            speed_mult = 1.5
-        elif self.selected_ammo == "explosive":
-            speed_mult = 0.6
-        
-        new_ball.vx = self.f2_power * math.cos(self.an) * speed_mult
-        new_ball.vy = - self.f2_power * math.sin(self.an) * speed_mult
+            new_ball.vx *= 1.5
+            new_ball.vy *= 1.5
         
         balls.append(new_ball)
         self.f2_on = 0
@@ -451,18 +301,16 @@ class Gun:
         if not self.is_player and self.live:
             self.ai_timer += 1
             
-            # Обновление сообщения о нехватке патронов
-            if self.no_ammo_message > 0:
-                self.no_ammo_message -= 1
-            
             # Выбираем цель
             if self.ai_target is None or not self.ai_target.live or randint(0, 100) == 0:
+                # Выбираем случайную живую цель, кроме себя
                 alive_targets = [g for g in all_guns if g != self and g.live]
                 if alive_targets:
                     self.ai_target = choice(alive_targets)
             
             # Двигаемся к цели или от неё
             if self.ai_target and self.ai_target.live:
+                # Случайное движение с уклонением
                 if randint(0, 50) == 0:
                     if randint(0, 1) == 0:
                         self.move_left()
@@ -480,7 +328,7 @@ class Gun:
                     self.ai_fire_delay = randint(60, 120)
                     # Меняем тип снаряда случайно
                     if randint(0, 5) == 0:
-                        self.selected_ammo = choice(["normal", "heavy", "bouncy", "explosive"])
+                        self.selected_ammo = choice(["normal", "heavy", "bouncy"])
 
     def draw(self):
         if not self.live:
@@ -508,11 +356,13 @@ class Gun:
         health_x = self.x - health_bar_width // 2
         health_y = self.y - 25
         
+        # Фон полоски здоровья (красный)
         pygame.draw.rect(
             self.screen,
             RED,
             (health_x, health_y, health_bar_width, health_bar_height)
         )
+        # Текущее здоровье (зеленый)
         current_health_width = int(health_bar_width * (self.health / self.max_health))
         if current_health_width > 0:
             pygame.draw.rect(
@@ -520,17 +370,6 @@ class Gun:
                 GREEN,
                 (health_x, health_y, current_health_width, health_bar_height)
             )
-        
-        # Отображение количества взрывных снарядов
-        if self.is_player or self.explosive_ammo < 3:
-            ammo_text = small_font.render(f"EX: {self.explosive_ammo}", True, PURPLE)
-            self.screen.blit(ammo_text, (self.x - 15, health_y - 15))
-        
-        # Сообщение об отсутствии патронов
-        if self.no_ammo_message > 0:
-            msg_text = small_font.render("NO AMMO!", True, RED)
-            msg_rect = msg_text.get_rect(center=(self.x, self.y - 50))
-            self.screen.blit(msg_text, msg_rect)
         
         # Метка игрока или бота
         if self.is_player:
@@ -561,15 +400,8 @@ class Gun:
     
     def switch_ammo(self, ammo_type):
         """Переключение типа снаряда."""
-        if ammo_type == "explosive" and self.explosive_ammo <= 0:
-            self.no_ammo_message = 60
-            return
         if ammo_type in self.ammo_colors:
             self.selected_ammo = ammo_type
-
-    def add_explosive_ammo(self, amount=1):
-        """Добавление взрывных снарядов."""
-        self.explosive_ammo = min(self.explosive_ammo + amount, self.max_explosive_ammo)
 
 
 class Target:
@@ -578,6 +410,7 @@ class Target:
         self.points = 0
         self.live = 1
         
+        # Типы целей: "normal", "fast", "tank"
         if target_type is None:
             self.target_type = choice(["normal", "fast", "tank"])
         else:
@@ -585,7 +418,8 @@ class Target:
         
         self.new_target()
         
-        self.bomb_timer = randint(60, 180)
+        # Таймер для сбрасывания бомб
+        self.bomb_timer = randint(60, 180)  # От 2 до 6 секунд при 30 FPS
         self.bomb_cooldown = 0
 
     def move(self):
@@ -601,10 +435,12 @@ class Target:
         """Обычное движение с отскоком от стен."""
         self.x += self.vx
         self.y += self.vy
+        
         self.bounce_off_walls()
 
     def move_fast(self):
         """Быстрое хаотичное движение."""
+        # Случайное изменение направления
         if randint(0, 30) == 0:
             self.vx = randint(-8, 8)
             self.vy = randint(-8, 8)
@@ -615,12 +451,15 @@ class Target:
         
         self.x += self.vx
         self.y += self.vy
+        
         self.bounce_off_walls()
 
     def move_tank(self):
         """Медленное, но упорное движение."""
+        # Медленное движение
         self.x += self.vx
         self.y += self.vy
+        
         self.bounce_off_walls()
 
     def bounce_off_walls(self):
@@ -655,6 +494,7 @@ class Target:
 
     def new_target(self):
         """ Инициализация новой цели с параметрами в зависимости от типа."""
+        # Базовые параметры
         x = self.x = randint(200, 780)
         y = self.y = randint(100, 500)
         r = self.r = randint(15, 40)
@@ -668,11 +508,10 @@ class Target:
             if self.vy == 0:
                 self.vy = choice([-2, 2])
             self.points_value = 1
-            self.health = 1
             
         elif self.target_type == "fast":
             self.color = YELLOW
-            self.r = randint(10, 20)
+            self.r = randint(10, 20)  # Маленькая и быстрая
             self.vx = randint(-8, 8)
             self.vy = randint(-8, 8)
             if self.vx == 0:
@@ -680,11 +519,10 @@ class Target:
             if self.vy == 0:
                 self.vy = choice([-4, 4])
             self.points_value = 2
-            self.health = 1
             
         elif self.target_type == "tank":
             self.color = DARK_GREEN
-            self.r = randint(35, 55)
+            self.r = randint(35, 55)  # Большая цель
             self.vx = randint(-2, 2)
             self.vy = randint(-2, 2)
             if self.vx == 0:
@@ -692,7 +530,6 @@ class Target:
             if self.vy == 0:
                 self.vy = choice([-1, 1])
             self.points_value = 1
-            self.health = 3  # Танк требует 3 попадания
         
         self.bomb_timer = randint(60, 180)
         self.bomb_cooldown = 0
@@ -702,25 +539,23 @@ class Target:
         self.points += points
 
     def draw(self):
-        # Все цели - круглые, но с разными визуальными эффектами
+        # Рисуем основную цель
         if self.target_type == "normal":
-            # Обычный круг
             pygame.draw.circle(self.screen, self.color, (self.x, self.y), self.r)
         elif self.target_type == "fast":
-            # Маленький круг с обводкой
-            pygame.draw.circle(self.screen, self.color, (self.x, self.y), self.r)
-            pygame.draw.circle(self.screen, BLACK, (self.x, self.y), self.r, 2)
+            # Маленький быстрый ромб
+            points = [
+                (self.x, self.y - self.r),
+                (self.x + self.r, self.y),
+                (self.x, self.y + self.r),
+                (self.x - self.r, self.y)
+            ]
+            pygame.draw.polygon(self.screen, self.color, points)
         elif self.target_type == "tank":
-            # Большой круг с двойной обводкой
-            pygame.draw.circle(self.screen, self.color, (self.x, self.y), self.r)
-            pygame.draw.circle(self.screen, BLACK, (self.x, self.y), self.r, 4)
-            pygame.draw.circle(self.screen, DARK_RED, (self.x, self.y), self.r - 5, 2)
-        
-        # Индикатор здоровья для танка
-        if self.target_type == "tank":
-            health_text = small_font.render(str(self.health), True, WHITE)
-            health_rect = health_text.get_rect(center=(self.x, self.y))
-            self.screen.blit(health_text, health_rect)
+            # Квадрат (большая цель)
+            pygame.draw.rect(self.screen, self.color, 
+                           (self.x - self.r, self.y - self.r, 
+                            self.r * 2, self.r * 2))
         
         # Индикатор готовности бомбы
         if self.bomb_cooldown <= 0:
@@ -745,10 +580,13 @@ clock = pygame.time.Clock()
 total_score = 0
 
 # Создаем пушки (одна для игрока, остальные боты)
-guns = [ Gun(screen, 400, 560, GREY, True),
-                        Gun(screen, 200, 200, RED, False),
-                        Gun(screen, 600, 200, BLUE, False)
-                    ]
+guns = [
+    Gun(screen, 400, 560, GREY, True),   # Игрок внизу по центру
+    Gun(screen, 200, 100, RED, False),    # Бот 1 сверху слева
+    Gun(screen, 600, 100, BLUE, False),   # Бот 2 сверху справа
+    Gun(screen, 100, 300, GREEN, False),  # Бот 3 слева
+    Gun(screen, 700, 300, MAGENTA, False) # Бот 4 справа
+]
 
 # Создаем цели
 targets = [
@@ -760,7 +598,6 @@ targets = [
 finished = False
 game_over = False
 player_gun = guns[0]  # Первая пушка - игрок
-score_for_explosive = 0  # Счетчик очков для выдачи взрывных снарядов
 
 while not finished:
     screen.fill(WHITE)
@@ -773,16 +610,12 @@ while not finished:
         # Проверка, остались ли боты
         alive_bots = [g for g in guns if not g.is_player and g.live]
         if len(alive_bots) == 0:
+            # Все боты уничтожены - победа!
             victory_text = font.render("ПОБЕДА! Все боты уничтожены!", True, GREEN)
             screen.blit(victory_text, (WIDTH//2 - 250, HEIGHT//2))
             pygame.display.update()
             pygame.time.wait(3000)
             game_over = True
-        
-        # Выдача взрывных снарядов за очки
-        if total_score >= score_for_explosive + 10:
-            score_for_explosive = total_score
-            player_gun.add_explosive_ammo(1)
         
         # Отображение статистики
         score_text = font.render(f"Очки: {total_score}", True, BLACK)
@@ -791,13 +624,6 @@ while not finished:
         alive_text = font.render(f"Ботов осталось: {len(alive_bots)}", True, BLACK)
         screen.blit(alive_text, (10, 40))
         
-        # Информация о снарядах
-        ammo_info = f"[1]Normal [2]Heavy [3]Bouncy [4]Explosive({player_gun.explosive_ammo})"
-        ammo_text = small_font.render(ammo_info, True, BLACK)
-        screen.blit(ammo_text, (10, 70))
-        
-        current_ammo_text = small_font.render(f"Текущий: {player_gun.selected_ammo}", True, player_gun.ammo_colors.get(player_gun.selected_ammo, GREY))
-        screen.blit(current_ammo_text, (10, 95))
         
         # Обновление AI для ботов
         for gun in guns:
@@ -828,6 +654,7 @@ while not finished:
                         bombs.remove(bomb)
                     break
             
+            # Удаление бомб, вышедших за экран
             if bomb in bombs and not bomb.live:
                 bombs.remove(bomb)
         
@@ -862,89 +689,51 @@ while not finished:
                 player_gun.targetting(event)
             elif event.type == pygame.KEYDOWN:
                 if player_gun.live:
+                    # Переключение типов снарядов клавишами 1-3
                     if event.key == pygame.K_1:
                         player_gun.switch_ammo("normal")
                     elif event.key == pygame.K_2:
                         player_gun.switch_ammo("heavy")
                     elif event.key == pygame.K_3:
                         player_gun.switch_ammo("bouncy")
-                    elif event.key == pygame.K_4:
-                        player_gun.switch_ammo("explosive")
 
         # Обновление снарядов и проверка попаданий
         for b in balls[:]:
             b.move()
             
-            # Проверка взрывного урона
-            if b.ball_type == "explosive" and b.explosion_active:
-                # Урон всем целям в радиусе взрыва
-                for target in targets[:]:
-                    if target.live:
-                        explosion_damage = b.get_explosion_damage(target.x, target.y)
-                        if explosion_damage > 0:
-                            target.health -= explosion_damage
-                            if target.health <= 0:
-                                target.live = 0
-                                total_score += target.points_value
-                                new_target = Target(target.target_type)
-                                targets.remove(target)
-                                targets.append(new_target)
-                
-                # Урон пушкам в радиусе взрыва
-                for gun in guns:
-                    if gun.live and gun != b.owner:
-                        explosion_damage = b.get_explosion_damage(gun.x, gun.y)
-                        if explosion_damage > 0:
-                            gun.take_damage(explosion_damage)
-                            if not gun.live and not gun.is_player:
-                                total_score += gun.points_value
-                
-                if b.explosion_timer <= 0:
-                    if b in balls:
-                        balls.remove(b)
-                continue
-            
             # Проверка попадания в цели
             hit_target = False
             for target in targets[:]:
                 if b.hittest(target) and target.live:
-                    if b.ball_type == "explosive":
-                        b.activate_explosion()
-                    else:
-                        target.health -= b.damage
-                        if target.health <= 0:
-                            target.live = 0
-                            total_score += target.points_value
-                            new_target = Target(target.target_type)
-                            targets.remove(target)
-                            targets.append(new_target)
-                            new_target.live = 1
+                    total_score += target.points_value  # Добавляем очки
+                    target.live = 0
+                    # Создаем новую цель того же типа
+                    new_target = Target(target.target_type)
+                    targets.remove(target)
+                    targets.append(new_target)
+                    new_target.live = 1
                     hit_target = True
                     break
             
             if hit_target:
-                if not b.ball_type == "explosive" or not b.explosion_active:
-                    if b in balls:
-                        balls.remove(b)
+                if b in balls:
+                    balls.remove(b)
                 continue
             
             # Проверка попадания в пушки (кроме владельца)
             hit_gun = False
             for gun in guns:
                 if gun != b.owner and gun.live and b.hittest(gun):
-                    if b.ball_type == "explosive":
-                        b.activate_explosion()
-                    else:
-                        gun.take_damage(b.damage)
-                        if not gun.live and not gun.is_player:
-                            total_score += gun.points_value
+                    gun.take_damage(b.damage)
+                    if not gun.live and not gun.is_player:
+                        # Если уничтожили бота, начисляем очки
+                        total_score += gun.points_value
                     hit_gun = True
                     break
             
             if hit_gun:
-                if not b.ball_type == "explosive" or not b.explosion_active:
-                    if b in balls:
-                        balls.remove(b)
+                if b in balls:
+                    balls.remove(b)
         
         player_gun.power_up()
     
@@ -971,11 +760,12 @@ while not finished:
                 if event.key == pygame.K_r:
                     # Перезапуск игры
                     total_score = 0
-                    score_for_explosive = 0
                     guns = [
                         Gun(screen, 400, 560, GREY, True),
                         Gun(screen, 200, 100, RED, False),
                         Gun(screen, 600, 100, BLUE, False),
+                        Gun(screen, 100, 300, GREEN, False),
+                        Gun(screen, 700, 300, MAGENTA, False)
                     ]
                     player_gun = guns[0]
                     targets = [
